@@ -1,4 +1,4 @@
-"""作业 3.1：保留时间轴的检查、时间划分、有效窗口和训练期标准化。"""
+"""保留时间轴的检查、时间划分、有效窗口和训练期标准化。"""
 
 import argparse
 from collections import Counter

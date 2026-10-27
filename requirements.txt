@@ -1,9 +1,16 @@
-# Python 3.12.3；作业 3.1 实际验证环境（含传递依赖）
 cloudpickle==3.1.2
+contourpy==1.4.0
+cycler==0.12.1
+fonttools==4.67.0
 joblib==1.6.0
+kiwisolver==1.5.1
+matplotlib==3.11.2
 narwhals==2.27.1
 numpy==2.5.4
+packaging==26.3
 pandas==3.1.0
+pillow==13.0.0
+pyparsing==3.3.3
 python-dateutil==3.0.0
 scikit-learn==1.9.1
 scipy==1.18.1

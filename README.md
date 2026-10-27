@@ -2,9 +2,9 @@
 
 北航《数据挖掘导论》2026 课程大作业任务三。使用过去两小时、每隔 10 分钟采集的全部 21 个指标，预测下一时间点的 `CO2 (ppm)`。
 
-**当前状态：已完成 3.0 问题定义和 3.1 数据预处理与划分，并在本地真实数据上验证。3.2 模型训练和 3.3 预测评价尚未实现。**
+**当前状态：已完成 3.0—3.3，包括数据预处理、Ridge 与梯度提升增量模型训练、验证选参、测试评价和绘图，并在真实数据上运行验证。**
 
-本地报告和实验方案保存在 `docs/`，不纳入版本管理或仓库分发；数据处理及运行说明见下文。正式作业要求见 [作业说明](../course-project/docs/作业说明_2026.pdf) 第 4 页；相邻目录链接依赖当前工作区布局。
+当前保留 Ridge 与梯度提升增量模型，持续值只作为评价参照。本地报告和实验方案保存在 `docs/`，不纳入版本管理或仓库分发；数据处理及运行说明见下文。正式作业要求见 [作业说明](../course-project/docs/作业说明_2026.pdf) 第 4 页；相邻目录链接依赖当前工作区布局。
 
 ## 数据处理与划分
 
@@ -20,13 +20,14 @@
 
 ## 环境与运行
 
-已验证环境为 Python 3.12.3、NumPy 2.5.4、pandas 3.1.0、scikit-learn 1.9.1、joblib 1.6.0；完整依赖版本见 `requirements.txt`。在任务根目录执行：
+已验证环境为 Python 3.12.3、NumPy 2.5.4、pandas 3.1.0、scikit-learn 1.9.1、joblib 1.6.0 和 Matplotlib 3.11.2；完整依赖版本见 `requirements.txt`。在任务根目录执行：
 
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m unittest -v test_prepare_data
-.venv/bin/python prepare_data.py --output-dir results/prepare_3_1
+.venv/bin/python -m unittest -v test_prepare_data test_experiment test_tree_experiment
+.venv/bin/python prepare_data.py --output-dir results/prepare_final
+.venv/bin/python run_tree_experiment.py --prepared-dir results/prepare_final --output-dir results/models
 ```
 
 上述安装、测试和预处理命令均已执行成功。示例输出目录已有本次产物，再运行时须指定一个新目录。省略 `--output-dir` 时自动创建脚本目录下的 `results/prepare_<UTC时间戳>/`；省略 `--input` 时读取脚本目录下的 `dataset/weather.csv`。显式相对路径按当前工作目录解析。
@@ -35,7 +36,7 @@ python3 -m venv .venv
 
 ## 本次实际结果
 
-2026 年 10 月 27 日运行 `results/prepare_3_1/`：原始 26,200 行，删除 1 条完全重复记录后为 26,199 行。无效占位值共 45 个单元格、44 行，未发现空白、不可转换数值或非有限数；保留 1 处 100 分钟的时间间隔，不跨缺口构造有效窗口。
+2026 年 10 月 27 日首次运行 `results/prepare_3_1/`，随后使用当前代码生成 `results/prepare_final/`，统计一致：原始 26,200 行，删除 1 条完全重复记录后为 26,199 行。无效占位值共 45 个单元格、44 行，未发现空白、不可转换数值或非有限数；保留 1 处 100 分钟的时间间隔，不跨缺口构造有效窗口。
 
 | 数据段 | 时间段起止（2020 年） | 去重观测行数 | 有效窗口数 |
 | --- | --- | ---: | ---: |
@@ -78,4 +79,72 @@ python3 -m venv .venv
 
 审计文件中的 `position` 表示去重后序列的零起始位置，`original_row` 表示原 CSV 的零起始行索引。`window_indices.csv` 包含开头历史不足的 12 个位置，缺少的历史索引留空；各原因次数不能相加作为排除总数。检查文件同时给出全部目标位置与完整候选窗口两种统计口径。
 
-后续 3.2 将在相同窗口上实现持续值和 Ridge，Ridge 输入按 C 顺序展开为 252 维，只按验证 RMSE 选参；3.3 再报告 MAE、RMSE 和预测图表。目前没有模型指标或预测效果结论。
+## 模型训练与评价
+
+主入口 `run_tree_experiment.py` 对比两个学习模型：Ridge 和 HistGradientBoostingDelta（梯度提升增量模型）。持续值直接沿用最后一次原始 CO₂，用于计算两种模型的额外收益。
+
+- **Ridge**：标准化窗口按 C 顺序展开为 252 维，`fit_intercept=True`、`solver="svd"`，直接拟合原始 ppm 标签。仅按验证 RMSE 在 `0.1、1、10、100、1000` 中选择 alpha；精确平局时选较小值。
+- **梯度提升增量模型**：保留 252 维历史值，加入 231 维相邻历史差分，共 483 维。学习目标为下一时刻 CO₂ 减去最后一次原始 CO₂，预测后加回最后浓度，输出仍为 ppm。特征全部来自原来的 `12 × 21` 历史输入。
+- **固定搜索**：梯度提升使用学习率 0.05／0.1、最大叶节点 7／15／31，共 6 组；最多 400 轮，叶节点最少 30 个样本、L2 正则 10、随机种子 42。显式传入原验证段，连续 20 轮无明显改善时停止，再按未四舍五入的验证 RMSE 恢复最佳预测前缀。候选精确平局时保留较早登记者。
+- 所有拟合只使用训练窗口；选参、选轮次和模型保存完成后才评价测试，不合并验证集重训。两种方法使用同一窗口、标签和目标时间戳，计算线程限制为 4。
+
+主入口提供 `--prepared-dir`、`--output-dir`，默认输入为脚本目录下的 `results/prepare_final/`，默认输出为新的 `results/tree_exploration_<UTC时间戳>/`。显式相对路径按当前工作目录解析，已有目录拒绝覆盖；输出不能位于原始数据或预处理目录内，失败时保存阶段和原因。
+
+只需单独运行 Ridge 与持续值对照时，以下命令也已实际验证：
+
+```bash
+.venv/bin/python run_experiment.py --prepared-dir results/prepare_final --output-dir results/ridge
+```
+
+该入口默认输入同上，默认新建 `results/ridge_<UTC时间戳>/`。更改预处理代码后应在新目录重新准备数据，再显式指定 `--prepared-dir`；入口校验原始数据和预处理代码哈希、特征顺序、固定边界、输入形状与有限性，以及目标索引和时间戳。
+
+## 实际模型结果
+
+当前完整结果位于 `results/models/`，Ridge 单独结果位于 `results/ridge/`。Ridge 选中 `alpha=0.1`；梯度提升选中学习率 0.1、最大叶节点 7，训练在第 232 轮停止，实际使用验证最优的第 212 轮预测前缀。
+
+| 方法 | 验证 MAE（ppm） | 验证 RMSE（ppm） | 测试 MAE（ppm） | 测试 RMSE（ppm） |
+| --- | ---: | ---: | ---: | ---: |
+| 持续值参照 | 1.5929 | 2.9179 | 1.9710 | 3.5301 |
+| Ridge | 1.5515 | 2.7676 | 1.9657 | 3.4274 |
+| 梯度提升增量模型 | 1.4379 | 2.6440 | 1.8534 | 3.3687 |
+
+相对持续值，Ridge 的测试 MAE／RMSE 改善 0.27%／2.91%，梯度提升增量模型改善 **5.97%／4.57%**；新模型相对 Ridge 改善 **5.71%／1.71%**。增益有限，不宣称统计显著性。
+
+**树模型改进属于探索性结果。** 方法是在原测试结果已经被观察后提出的；本轮虽然仅按验证集选参，沿用的测试集仍不构成新的独立检验。改进同时涉及模型族、增量目标和历史差分，未通过独立消融归因。
+
+## 模型产物与恢复
+
+| `results/models/` 产物 | 内容 |
+| --- | --- |
+| `config.json`、`environment.json` | 运行命令、参数、环境，以及代码、原数据、输入产物哈希 |
+| `preprocessing/` | 预处理配置、检查、边界、窗口索引及缩放器拟合统计快照 |
+| `ridge_validation_search.csv` | Ridge 全部候选的验证结果 |
+| `tree_validation_search.csv`、`boosting_history.csv` | 6 组梯度提升候选及逐轮验证结果 |
+| `selection.json` | 仅按验证集确定的 alpha、树模型配置和最佳轮次 |
+| `ridge_model.joblib` | Ridge、固定缩放器和输入元信息 |
+| `tree_model.joblib` | 增量估计器、最佳轮次、固定缩放器和输入元信息 |
+| `predictions.csv` | 两种模型及持续值参照的验证／测试逐条预测，含目标原始行、时间戳、真实值、预测值及残差（预测减真实） |
+| `metrics.csv`、`metrics_by_period.csv` | 整体指标、相对改善及从测试边界开始的固定 7 天分段指标 |
+| `figures/` | 完整测试曲线、首 24 小时曲线、残差及误差比较，各有 PNG 和 SVG |
+| `summary.json`、`verification.json` | 样本数、耗时、独立指标及哈希核验记录 |
+| `failure.json` | 仅失败时生成，记录阶段及原因 |
+
+`results/ridge/` 保存单独的 Ridge 结果，模型文件名为 `model.joblib`，候选记录为 `validation_search.csv`。
+
+加载 Ridge bundle 后，已标准化输入使用 `bundle["ridge"].predict(X.reshape(len(X), 252))`。加载树模型 bundle 后，使用 `run_tree_experiment.predict_tree(bundle, X)`，接收标准化的 `(M, 12, 21)` 历史输入，统一执行历史差分、最佳预测前缀和 ppm 还原。原始输入需先用 bundle 内的固定 `scaler` 逐行转换，模型加载时不重新拟合。
+
+当前 23 项针对性测试全部通过。两种模型均已在真实数据上重新运行；模型回读预测、保存 CSV 指标、共享目标与代码／输入哈希核验通过。原始数据和预处理产物未修改。
+
+评价采用逐时刻单步预测。相对改善以持续值误差为分母，分母为零时记为不适用，保留负改善；指标只接受等长、非空、一维有限数组。曲线在不连续目标之间断开，局部窗口固定为测试边界起首 24 小时，不按效果挑选。季节变化、窗口重叠和无效窗口排除限制了结论的适用范围。
+
+## 代码仓库与报告成稿
+
+代码仓库：[UBAA-DMProject/task3-weather-forecasting](https://github.com/UBAA-DMProject/task3-weather-forecasting)。
+
+本地报告已按课程提供的报告模版排版，覆盖正式作业3.0—3.3要求，仅包含Ridge、梯度提升增量模型及持续值评价参照：
+
+- [报告PDF](reports/任务三_时间序列预测报告_修订版.pdf)：7页，供阅读和提交。
+- [可编辑Word](reports/任务三_时间序列预测报告_修订版.docx)：含可编辑公式，作者信息按要求暂留待填写。
+- [报告Markdown正文](docs/任务三实验报告.md)：便于修改和整合。
+
+报告、图表及核验记录仅在本地保留，`reports/` 和 `docs/` 继续由Git忽略。提交说明和来源记录见 [reports/README.md](reports/README.md)。

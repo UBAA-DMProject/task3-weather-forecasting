@@ -1,0 +1,39 @@
+# 本地开发环境
+/.vscode/
+/.idea/
+/.codex/
+/.agents/
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example
+
+# Python 环境与缓存
+/.venv/
+/venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+/build/
+/dist/
+
+# 原始数据：需自行准备，不提交课程数据
+/dataset/
+
+# 完整实验产物、报告快照与缓存
+/results/
+/reports/
+/.cache/
+*.log
+
+# 编辑器临时文件；README、AGENTS.md 和 docs/ 保留版本管理
+*.swp
+*.swo
+~$*

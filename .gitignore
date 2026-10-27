@@ -30,10 +30,11 @@ htmlcov/
 # 完整实验产物、报告快照与缓存
 /results/
 /reports/
+/docs/
 /.cache/
 *.log
 
-# 编辑器临时文件；README、AGENTS.md 和 docs/ 保留版本管理
+# 编辑器临时文件；README 和 AGENTS.md 保留版本管理
 *.swp
 *.swo
 ~$*

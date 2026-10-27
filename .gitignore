@@ -25,7 +25,8 @@ htmlcov/
 /dist/
 
 # 原始数据：需自行准备，不提交课程数据
-/dataset/
+/dataset/*
+!/dataset/README.md
 
 # 完整实验产物、报告快照与缓存
 /results/
